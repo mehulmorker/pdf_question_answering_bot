@@ -43,15 +43,23 @@ def add_chunks(chunks: list[Document]) -> int:
     return len(chunks)
 
 
-def similarity_search(question: str, n_results: int = 3) -> list[dict]:
-    """Embed the question, find the n_results closest chunks, return with scores."""
+def similarity_search(question: str, n_results: int = 3, source: str | None = None) -> list[dict]:
+    """Embed the question, find the n_results closest chunks, return with scores.
+
+    Pass source=filename to restrict results to a single indexed document.
+    Without it, search runs across every PDF in the collection.
+    """
     collection = _get_collection()
 
     query_embedding = embed_text(question)
 
+    # where filter is optional — only apply it when a source is specified
+    where = {"source": source} if source else None
+
     results = collection.query(
         query_embeddings=[query_embedding],
         n_results=n_results,
+        where=where,
         include=["documents", "metadatas", "distances"],
     )
 

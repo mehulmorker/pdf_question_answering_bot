@@ -17,6 +17,7 @@ app = FastAPI(title="PDF Q&A", description="Upload a PDF, ask questions about it
 
 class AskRequest(BaseModel):
     question: str
+    source: str | None = None  # optional: restrict search to one uploaded PDF
 
 class AskResponse(BaseModel):
     answer: str
@@ -52,7 +53,7 @@ def ask(request: AskRequest):
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
-    answer = answer_question(request.question)
+    answer = answer_question(request.question, source=request.source)
     return AskResponse(
         answer=answer,
         found_in_document=(answer != NO_ANSWER),

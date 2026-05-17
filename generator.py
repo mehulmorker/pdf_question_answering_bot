@@ -48,9 +48,9 @@ def _build_context(chunks: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-def answer_question(question: str) -> str:
+def answer_question(question: str, source: str | None = None) -> str:
     """Full RAG pipeline: retrieve → check → prompt → generate."""
-    chunks = retrieve(question)
+    chunks = retrieve(question, source=source)
 
     # Guard: if nothing is relevant, say so rather than hallucinating
     if not chunks:
