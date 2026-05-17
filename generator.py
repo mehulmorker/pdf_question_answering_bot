@@ -48,28 +48,30 @@ def _build_context(chunks: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-def answer_question(question: str, source: str | None = None) -> str:
-    """Full RAG pipeline: retrieve → check → prompt → generate."""
-    chunks = retrieve(question, source=source)
-
-    # Guard: if nothing is relevant, say so rather than hallucinating
+def generate_answer(question: str, chunks: list[dict]) -> str:
+    """Generate an answer from pre-fetched chunks. Use this when you already
+    have the chunks (e.g. to display them in a UI without double-fetching)."""
     if not chunks:
         return NO_ANSWER
 
     context = _build_context(chunks)
-
     user_message = f"Context from the document:\n\n{context}\n\nQuestion: {question}"
 
     response = client.chat.completions.create(
         model=LLM_MODEL,
-        temperature=0,          # deterministic — factual Q&A, not creative writing
+        temperature=0,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user",   "content": user_message},
         ],
     )
-
     return response.choices[0].message.content
+
+
+def answer_question(question: str, source: str | None = None) -> str:
+    """Full RAG pipeline: retrieve → check → prompt → generate."""
+    chunks = retrieve(question, source=source)
+    return generate_answer(question, chunks)
 
 
 if __name__ == "__main__":
