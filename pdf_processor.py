@@ -21,7 +21,7 @@ def load_and_chunk_pdf(file_path: str) -> list[Document]:
             texts=[page["text"]],
             metadatas=[{
                 "source": file_path,
-                "page": page["metadata"]["page"],  # 0-indexed
+                "page": page["metadata"]["page_number"],
             }],
         )
         all_chunks.extend(chunks)
