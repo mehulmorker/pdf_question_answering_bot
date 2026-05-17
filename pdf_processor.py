@@ -1,45 +1,27 @@
-from langchain_community.document_loaders import PyMuPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+import pymupdf4llm
+from langchain_text_splitters import MarkdownTextSplitter
 from langchain_core.documents import Document
 
 
-def _is_clean(text: str) -> bool:
-    """Return False for chunks that are visualization noise, not readable prose."""
-    if len(text.strip()) < 100:
-        return False
-    # Tokenized attention maps: individual words on separate lines produce a
-    # very high newline-to-character ratio (e.g. "It\nis\nin\nthis\nspirit")
-    if text.count("\n") / len(text) > 0.3:
-        return False
-    # PDF figure captions embed raw model tokens
-    if "<pad>" in text or "<EOS>" in text:
-        return False
-    return True
-
-
 def load_and_chunk_pdf(file_path: str) -> list[Document]:
-    loader = PyMuPDFLoader(file_path)
-    pages = loader.load()
+    # Extract as Markdown: preserves headers, sections, and document structure.
+    # Handles multi-column layouts and figures without leaking figure text as prose.
+    md_text = pymupdf4llm.to_markdown(file_path)
 
-    # Join all pages before chunking so the splitter can cross page boundaries.
-    # Chunking per-page severs any concept that continues onto the next page.
-    # Tradeoff: chunks no longer carry an exact page number in their metadata.
-    full_text = "\n\n".join(page.page_content for page in pages)
-    full_doc = Document(
-        page_content=full_text,
-        metadata={"source": file_path},
-    )
-
-    splitter = RecursiveCharacterTextSplitter(
+    # MarkdownTextSplitter splits on headers first (##, ###), then falls back
+    # to RecursiveCharacterTextSplitter behaviour. Keeps sections coherent.
+    splitter = MarkdownTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
-        separators=["\n\n", "\n", ".", " ", ""],
     )
 
-    chunks = splitter.split_documents([full_doc])
-    clean = [c for c in chunks if _is_clean(c.page_content)]
-    print(f"Kept {len(clean)}/{len(chunks)} chunks after cleaning.")
-    return clean
+    chunks = splitter.create_documents(
+        texts=[md_text],
+        metadatas=[{"source": file_path}],
+    )
+
+    print(f"Extracted {len(chunks)} chunks.")
+    return chunks
 
 
 if __name__ == "__main__":
@@ -50,14 +32,9 @@ if __name__ == "__main__":
         sys.exit(1)
 
     chunks = load_and_chunk_pdf(sys.argv[1])
+    print(f"Avg chunk length: {sum(len(c.page_content) for c in chunks) // len(chunks)} chars\n")
 
-    print(f"Total chunks: {len(chunks)}")
-    print(f"Avg chunk length: {sum(len(c.page_content) for c in chunks) // len(chunks)} chars")
-    print()
-
-    # Show first 3 chunks so you can see what the splitter produced
-    for i, chunk in enumerate(chunks[:10]):
-        print(f"--- Chunk {i} (page {chunk.metadata.get('page', '?')}) ---")
+    for i, chunk in enumerate(chunks[:5]):
+        print(f"--- Chunk {i} ---")
         print(chunk.page_content)
-        # print(chunk)
         print()
