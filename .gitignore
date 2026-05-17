@@ -14,4 +14,7 @@ wheels/
 
 # ChromaDB local database
 chroma_db/
+
+# BM25 chunk store
+bm25_store/
 learning/
