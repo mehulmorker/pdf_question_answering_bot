@@ -4,24 +4,25 @@ from langchain_core.documents import Document
 
 
 def load_and_chunk_pdf(file_path: str) -> list[Document]:
-    # Load: one Document per page, each with metadata: {"source": path, "page": int}
     loader = PyMuPDFLoader(file_path)
     pages = loader.load()
 
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,     # max characters per chunk
-        chunk_overlap=200,   # characters shared between adjacent chunks
-        separators=[
-            "\n\n",  # paragraph break — try this first
-            "\n",    # line break
-            ".",     # sentence end
-            " ",     # word boundary
-            "",      # character-level last resort
-        ],
+    # Join all pages before chunking so the splitter can cross page boundaries.
+    # Chunking per-page severs any concept that continues onto the next page.
+    # Tradeoff: chunks no longer carry an exact page number in their metadata.
+    full_text = "\n\n".join(page.page_content for page in pages)
+    full_doc = Document(
+        page_content=full_text,
+        metadata={"source": file_path},
     )
 
-    chunks = splitter.split_documents(pages)
-    return chunks
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200,
+        separators=["\n\n", "\n", ".", " ", ""],
+    )
+
+    return splitter.split_documents([full_doc])
 
 
 if __name__ == "__main__":
