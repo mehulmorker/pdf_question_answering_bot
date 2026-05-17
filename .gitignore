@@ -14,3 +14,4 @@ wheels/
 
 # ChromaDB local database
 chroma_db/
+learning/
