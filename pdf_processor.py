@@ -4,27 +4,32 @@ from langchain_core.documents import Document
 
 
 def load_and_chunk_pdf(file_path: str) -> list[Document]:
-    # page_chunks=True returns one dict per page, each with text + metadata
-    # (including page number). Tradeoff: a section spanning two pages will be
-    # split at the boundary — acceptable because MarkdownTextSplitter respects
-    # headers, so splits happen at section edges rather than mid-sentence.
-    pages = pymupdf4llm.to_markdown(file_path, page_chunks=True)
+    splitter = MarkdownTextSplitter(chunk_size=1000, chunk_overlap=200)
 
-    splitter = MarkdownTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
-    )
+    try:
+        # page_chunks=True gives per-page metadata including page number.
+        # Fails on some PDFs due to a pymupdf4llm bug (empty range in page_filter).
+        pages = pymupdf4llm.to_markdown(file_path, page_chunks=True)
+        all_chunks: list[Document] = []
+        for page in pages:
+            chunks = splitter.create_documents(
+                texts=[page["text"]],
+                metadatas=[{
+                    "source": file_path,
+                    "page": page["metadata"]["page_number"],
+                }],
+            )
+            all_chunks.extend(chunks)
 
-    all_chunks: list[Document] = []
-    for page in pages:
-        chunks = splitter.create_documents(
-            texts=[page["text"]],
-            metadatas=[{
-                "source": file_path,
-                "page": page["metadata"]["page_number"],
-            }],
+    except IndexError:
+        # Fallback: extract full document without page tracking.
+        # Loses per-chunk page numbers but avoids the pymupdf4llm bug.
+        print("Warning: page_chunks failed, falling back to full-document extraction.")
+        md_text = pymupdf4llm.to_markdown(file_path)
+        all_chunks = splitter.create_documents(
+            texts=[md_text],
+            metadatas=[{"source": file_path, "page": "?"}],
         )
-        all_chunks.extend(chunks)
 
     print(f"Extracted {len(all_chunks)} chunks.")
     return all_chunks
