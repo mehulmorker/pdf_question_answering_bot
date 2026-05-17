@@ -1,3 +1,4 @@
+import pymupdf
 import pymupdf4llm
 from langchain_text_splitters import MarkdownTextSplitter
 from langchain_core.documents import Document
@@ -22,14 +23,22 @@ def load_and_chunk_pdf(file_path: str) -> list[Document]:
             all_chunks.extend(chunks)
 
     except IndexError:
-        # Fallback: extract full document without page tracking.
-        # Loses per-chunk page numbers but avoids the pymupdf4llm bug.
-        print("Warning: page_chunks failed, falling back to full-document extraction.")
-        md_text = pymupdf4llm.to_markdown(file_path)
-        all_chunks = splitter.create_documents(
-            texts=[md_text],
-            metadatas=[{"source": file_path, "page": "?"}],
-        )
+        # pymupdf4llm's layout parser crashes on some PDFs (known bug in document_layout.py).
+        # Fall back to raw PyMuPDF (which pymupdf4llm wraps) — bypasses the broken layout
+        # analysis while still giving per-page text and page numbers.
+        print("Warning: pymupdf4llm layout parser failed, falling back to raw PyMuPDF extraction.")
+        all_chunks = []
+        doc = pymupdf.open(file_path)
+        for page_num, page in enumerate(doc, start=1):
+            text = page.get_text()
+            if not text.strip():
+                continue
+            chunks = splitter.create_documents(
+                texts=[text],
+                metadatas=[{"source": file_path, "page": page_num}],
+            )
+            all_chunks.extend(chunks)
+        doc.close()
 
     print(f"Extracted {len(all_chunks)} chunks.")
     return all_chunks
