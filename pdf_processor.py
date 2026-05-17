@@ -3,6 +3,20 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
 
+def _is_clean(text: str) -> bool:
+    """Return False for chunks that are visualization noise, not readable prose."""
+    if len(text.strip()) < 100:
+        return False
+    # Tokenized attention maps: individual words on separate lines produce a
+    # very high newline-to-character ratio (e.g. "It\nis\nin\nthis\nspirit")
+    if text.count("\n") / len(text) > 0.3:
+        return False
+    # PDF figure captions embed raw model tokens
+    if "<pad>" in text or "<EOS>" in text:
+        return False
+    return True
+
+
 def load_and_chunk_pdf(file_path: str) -> list[Document]:
     loader = PyMuPDFLoader(file_path)
     pages = loader.load()
@@ -22,7 +36,10 @@ def load_and_chunk_pdf(file_path: str) -> list[Document]:
         separators=["\n\n", "\n", ".", " ", ""],
     )
 
-    return splitter.split_documents([full_doc])
+    chunks = splitter.split_documents([full_doc])
+    clean = [c for c in chunks if _is_clean(c.page_content)]
+    print(f"Kept {len(clean)}/{len(chunks)} chunks after cleaning.")
+    return clean
 
 
 if __name__ == "__main__":
