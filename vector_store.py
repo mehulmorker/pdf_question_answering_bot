@@ -16,23 +16,31 @@ def _get_collection() -> chromadb.Collection:
     )
 
 
-def add_chunks(chunks: list[Document]) -> None:
-    """Embed all chunks in one API call, then store them in ChromaDB."""
+def add_chunks(chunks: list[Document]) -> int:
+    """Embed all chunks in one API call, then upsert them into ChromaDB.
+
+    Uses upsert (not add) so re-uploading the same PDF updates existing chunks
+    rather than crashing on duplicate IDs. IDs are scoped to the source filename
+    so two different PDFs never overwrite each other's chunks.
+    """
     collection = _get_collection()
 
     texts = [chunk.page_content for chunk in chunks]
     metadatas = [chunk.metadata for chunk in chunks]
-    ids = [f"chunk_{i}" for i in range(len(chunks))]
 
-    embeddings = embed_texts(texts)  # single API call — not one per chunk
+    # Include source filename in the ID so different PDFs don't collide
+    source = chunks[0].metadata.get("source", "unknown")
+    ids = [f"{source}::chunk_{i}" for i in range(len(chunks))]
 
-    collection.add(
+    embeddings = embed_texts(texts)
+
+    collection.upsert(
         ids=ids,
         embeddings=embeddings,
         documents=texts,
         metadatas=metadatas,
     )
-    print(f"Stored {len(chunks)} chunks.")
+    return len(chunks)
 
 
 def similarity_search(question: str, n_results: int = 3) -> list[dict]:
