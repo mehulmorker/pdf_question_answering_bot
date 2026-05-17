@@ -1,44 +1,30 @@
-import pymupdf
 import pymupdf4llm
 from langchain_text_splitters import MarkdownTextSplitter
 from langchain_core.documents import Document
 
 
 def load_and_chunk_pdf(file_path: str) -> list[Document]:
-    splitter = MarkdownTextSplitter(chunk_size=1000, chunk_overlap=200)
+    # page_chunks=True returns one dict per page, each with text + metadata
+    # (including page number). Tradeoff: a section spanning two pages will be
+    # split at the boundary — acceptable because MarkdownTextSplitter respects
+    # headers, so splits happen at section edges rather than mid-sentence.
+    pages = pymupdf4llm.to_markdown(file_path, page_chunks=True)
 
-    try:
-        # page_chunks=True gives per-page metadata including page number.
-        # Fails on some PDFs due to a pymupdf4llm bug (empty range in page_filter).
-        pages = pymupdf4llm.to_markdown(file_path, page_chunks=True)
-        all_chunks: list[Document] = []
-        for page in pages:
-            chunks = splitter.create_documents(
-                texts=[page["text"]],
-                metadatas=[{
-                    "source": file_path,
-                    "page": page["metadata"]["page_number"],
-                }],
-            )
-            all_chunks.extend(chunks)
+    splitter = MarkdownTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200,
+    )
 
-    except IndexError:
-        # pymupdf4llm's layout parser crashes on some PDFs (known bug in document_layout.py).
-        # Fall back to raw PyMuPDF (which pymupdf4llm wraps) — bypasses the broken layout
-        # analysis while still giving per-page text and page numbers.
-        print("Warning: pymupdf4llm layout parser failed, falling back to raw PyMuPDF extraction.")
-        all_chunks = []
-        doc = pymupdf.open(file_path)
-        for page_num, page in enumerate(doc, start=1):
-            text = page.get_text()
-            if not text.strip():
-                continue
-            chunks = splitter.create_documents(
-                texts=[text],
-                metadatas=[{"source": file_path, "page": page_num}],
-            )
-            all_chunks.extend(chunks)
-        doc.close()
+    all_chunks: list[Document] = []
+    for page in pages:
+        chunks = splitter.create_documents(
+            texts=[page["text"]],
+            metadatas=[{
+                "source": file_path,
+                "page": page["metadata"]["page_number"],
+            }],
+        )
+        all_chunks.extend(chunks)
 
     print(f"Extracted {len(all_chunks)} chunks.")
     return all_chunks
